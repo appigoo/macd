@@ -47,11 +47,16 @@ def calculate_mfi(df, period=14):
     mfi = 100 - (100 / (1 + money_ratio))
     return mfi
 
-# 檢測 bullish divergence（簡單版：最近 3 根價格新低但 histogram 沒新低）
+# 檢測 bullish divergence（改用手動檢查，避免 is_monotonic_decreasing 潛在問題）
 def detect_bullish_divergence(df, histogram):
+    if len(df) < 3:
+        return False
     recent_lows = df['Low'][-3:]
     hist_lows = histogram[-3:]
-    if recent_lows.is_monotonic_decreasing and not hist_lows.is_monotonic_decreasing:
+    # 手動檢查是否單調遞減（允許相等）
+    lows_decreasing = (recent_lows.diff() <= 0).all()
+    hist_decreasing = (hist_lows.diff() <= 0).all()
+    if lows_decreasing and not hist_decreasing:
         return True
     return False
 
@@ -97,16 +102,8 @@ while True:
         if not data.empty:
             # 限制數據長度以提升效能（最多 500 根 K 線）
             data = data.tail(500)
-            # 移除 NaN（因 rolling/ewm 產生）
-            data = data.dropna()
             
-            if len(data) < 10:
-                st.warning('數據不足，無法計算完整指標。請調整 period 或 interval。')
-                time.sleep(refresh_minutes * 60)
-                st.rerun()
-                continue
-            
-            # 計算指標
+            # 先計算指標（可能引入 NaN）
             macd_line, signal_line, histogram = calculate_macd(data, fast=macd_fast, slow=macd_slow, signal=macd_signal)
             data['MACD'] = macd_line
             data['Signal'] = signal_line
@@ -118,24 +115,35 @@ while True:
             data['OBV'] = calculate_obv(data)
             data['MFI'] = calculate_mfi(data, period=mfi_period)
             
-            # 分析信號
-            latest_hist = histogram.iloc[-3:]  # 最近 3 根 histogram
-            hist_increasing = latest_hist.diff().dropna().gt(0).all() and latest_hist.iloc[-1] < 0  # 負值但增加
+            # 計算後移除 NaN 行（確保所有指標無 NaN）
+            data = data.dropna()
             
-            divergence = detect_bullish_divergence(data, histogram)
+            if len(data) < 10:
+                st.warning('數據不足，無法計算完整指標。請調整 period 或 interval。')
+                time.sleep(refresh_minutes * 60)
+                st.rerun()
+                continue
+            
+            # 分析信號
+            latest_hist = histogram.iloc[-3:]  # 最近 3 根 histogram（注意：histogram 是原長度，但我們用 data 的 index 對應
+            # 由於 dropna 後，histogram[-3:] 需調整為 data['Histogram'][-3:]
+            latest_hist = data['Histogram'].tail(3)
+            hist_increasing = (latest_hist.diff().dropna().gt(0).all()) and (latest_hist.iloc[-1] < 0)
+            
+            divergence = detect_bullish_divergence(data, data['Histogram'])
             
             rsi_latest = data['RSI'].iloc[-1]
-            rsi_signal = rsi_latest > 40 and data['RSI'].iloc[-2] < 30 if len(data) > 1 else False  # 從超賣反彈
+            rsi_signal = (rsi_latest > 40) and (data['RSI'].iloc[-2] < 30) if len(data) > 1 else False
             
-            stoch_cross = data['%K'].iloc[-1] > data['%D'].iloc[-1] and data['%K'].iloc[-2] < 20 if len(data) > 1 else False
+            stoch_cross = (data['%K'].iloc[-1] > data['%D'].iloc[-1]) and (data['%K'].iloc[-2] < 20) if len(data) > 1 else False
             
             # 修正 volume_spike：用 'Volume' 並加 NaN 檢查
             vol_mean = data['Volume'].rolling(10).mean().iloc[-1]
-            volume_spike = (not pd.isna(vol_mean)) and data['Volume'].iloc[-1] > vol_mean * 1.5 if len(data) > 10 else False
+            volume_spike = (not pd.isna(vol_mean)) and (data['Volume'].iloc[-1] > vol_mean * 1.5) if len(data) > 10 else False
             
-            obv_up = data['OBV'].diff().iloc[-1] > 0 if len(data) > 1 else False
+            obv_up = (data['OBV'].diff().iloc[-1] > 0) if len(data) > 1 else False
             
-            mfi_signal = data['MFI'].iloc[-1] > 20 and data['MFI'].iloc[-2] < 20 if len(data) > 1 else False
+            mfi_signal = (data['MFI'].iloc[-1] > 20) and (data['MFI'].iloc[-2] < 20) if len(data) > 1 else False
             
             # 信號計分（滿分 7）
             signals = [hist_increasing, divergence, rsi_signal, stoch_cross, volume_spike, obv_up, mfi_signal]
@@ -151,8 +159,8 @@ while True:
             # 顯示內容
             with placeholder.container():
                 st.subheader('最新數據和指標')
-                st.metric("最新收盤價", f"{data['Close'].iloc[-1]:.2f}")  # 用 metric 更美觀
-                st.write(f'MACD Histogram: {histogram.iloc[-1]:.4f} (是否縮小: {"是" if hist_increasing else "否"})')
+                st.metric("最新收盤價", f"{data['Close'].iloc[-1]:.2f}")
+                st.write(f'MACD Histogram: {data["Histogram"].iloc[-1]:.4f} (是否縮小: {"是" if hist_increasing else "否"})')
                 st.write(f'多頭分歧: {"檢測到" if divergence else "無"}')
                 st.write(f'RSI: {rsi_latest:.2f} (信號: {"是" if rsi_signal else "否"})')
                 st.write(f'Stochastic %K/%D: {data["%K"].iloc[-1]:.2f} / {data["%D"].iloc[-1]:.2f} (交叉: {"是" if stoch_cross else "否"})')
@@ -165,7 +173,7 @@ while True:
                 st.write(f'信號強度: {score}/7')
                 
                 st.subheader('最近 10 根 K 線數據')
-                st.dataframe(data.tail(10)[['Open', 'High', 'Low', 'Close', 'Volume']])  # 只顯示主要欄位
+                st.dataframe(data.tail(10)[['Open', 'High', 'Low', 'Close', 'Volume']])
                 
                 # 可選：加簡單圖表
                 col1, col2 = st.columns(2)
