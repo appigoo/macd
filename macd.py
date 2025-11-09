@@ -189,9 +189,6 @@ with st.sidebar:
         enable_telegram_sell = False
         st.info("啟用 Telegram 前，請設定 secrets.toml。")
 
-    # 除錯顯示區域（僅側邊欄）
-    debug_placeholder = st.empty()
-
 placeholder = st.empty()
 
 def refresh_data():
@@ -321,40 +318,31 @@ def refresh_data():
             st.subheader('成交量')
             st.bar_chart(data['Volume'].tail(50))
 
-        # 新增：最後更新時間戳（視覺確認刷新）
-        st.info(f"最後更新時間: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-
 # 初始載入數據
 refresh_data()
 
-# 自動刷新邏輯（改用 st.sidebar.write 除錯，適合 UI 顯示）
+# 自動刷新邏輯（添加除錯輸出）
 if 'last_refresh_time' not in st.session_state:
     st.session_state.last_refresh_time = time.time()
-    with debug_placeholder.container():
-        st.sidebar.write("Debug: Session state initialized with current time.")
+    print("Debug: Session state initialized with current time.")
 
-with debug_placeholder.container():
-    st.sidebar.write(f"Debug: enable_auto_refresh={enable_auto_refresh}, interval={auto_interval_minutes}")
+print(f"Debug: enable_auto_refresh={enable_auto_refresh}, interval={auto_interval_minutes}")
 if enable_auto_refresh and auto_interval_minutes > 0:
     interval_seconds = auto_interval_minutes * 60
     elapsed = time.time() - st.session_state.last_refresh_time
-    with debug_placeholder.container():
-        st.sidebar.write(f"Debug: Elapsed {elapsed:.1f}s / Interval {interval_seconds}s")
+    print(f"Debug: Elapsed {elapsed:.1f}s / Interval {interval_seconds}s")
     if elapsed >= interval_seconds:
-        with debug_placeholder.container():
-            st.sidebar.write("Debug: Rerun triggered!")
+        print("Debug: Rerun triggered!")
         st.session_state.last_refresh_time = time.time()
         st.rerun()
 else:
-    with debug_placeholder.container():
-        st.sidebar.write("Debug: Auto refresh disabled.")
+    print("Debug: Auto refresh disabled.")
 
 # 手動刷新按鈕（側邊欄參數變化時自動 reruns）
 st.sidebar.markdown("---")
 if st.sidebar.button('立即刷新數據'):
     st.session_state.last_refresh_time = time.time()
-    with debug_placeholder.container():
-        st.sidebar.write("Debug: Manual refresh triggered!")
+    print("Debug: Manual refresh triggered!")
     st.rerun()
 
 st.sidebar.info(f'建議每 {refresh_minutes} 分鐘手動刷新一次，以獲取最新數據。周末將自動切換至每日數據。')
