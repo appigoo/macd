@@ -1,5 +1,4 @@
 streamlit
-yfinance ==0.2.65
-pandas
-plotly
+yfinance==0.2.50
+pandas --upgrade
 numpy
