@@ -49,12 +49,12 @@ def calculate_mfi(df, period=14):
 def detect_bullish_divergence(df, histogram):
     if len(df) < 3:
         return False
-    recent_lows = df['Low'].iloc[-3:]
-    hist_lows = histogram.iloc[-3:]
+    recent_lows = pd.to_numeric(df['Low'].iloc[-3:], errors='coerce')
+    hist_lows = pd.to_numeric(histogram.iloc[-3:], errors='coerce')
     diff_lows = recent_lows.diff().dropna()
     diff_hists = hist_lows.diff().dropna()
-    lows_decreasing = all(d <= 0 for d in diff_lows)
-    hist_decreasing = all(d <= 0 for d in diff_hists)
+    lows_decreasing = all(d <= 0 for d in diff_lows if pd.notna(d))
+    hist_decreasing = all(d <= 0 for d in diff_hists if pd.notna(d))
     # 多頭分歧判斷是價格創新低，但指標沒有創新低
     if lows_decreasing and not hist_decreasing:
         return True
@@ -66,6 +66,10 @@ def get_data(ticker, period, interval):
         data = yf.download(ticker, period=period, interval=interval, auto_adjust=False)
         if data.empty:
             return pd.DataFrame()
+        # 確保 OHLCV 欄位為數值型
+        for col in ['Open', 'High', 'Low', 'Close', 'Volume']:
+            if col in data.columns:
+                data[col] = pd.to_numeric(data[col], errors='coerce')
         return data
     except Exception as e:
         st.error(f"獲取數據失敗: {e}")
@@ -109,6 +113,7 @@ def refresh_data():
         return
 
     data = data.tail(500)  # 限制數據長度
+    data = data.dropna(subset=required_cols)  # 移除有 NaN 的行
 
     macd_line, signal_line, histogram = calculate_macd(data, fast=macd_fast, slow=macd_slow, signal=macd_signal)
     data['MACD'] = macd_line
@@ -128,9 +133,9 @@ def refresh_data():
             st.warning('數據不足（<10 根 K 線），無法計算完整指標。請調整 period 或 interval。')
         return
 
-    latest_hist = data['Histogram'].tail(3)
+    latest_hist = pd.to_numeric(data['Histogram'].tail(3), errors='coerce')
     diff_hist = latest_hist.diff().dropna()
-    hist_increasing = all(d > 0 for d in diff_hist) and (latest_hist.iloc[-1] < 0)
+    hist_increasing = all(d > 0 for d in diff_hist if pd.notna(d)) and (latest_hist.iloc[-1] < 0)
     divergence = detect_bullish_divergence(data, data['Histogram'])
     rsi_latest = data['RSI'].iloc[-1]
     rsi_signal = (rsi_latest > 40) and (data['RSI'].iloc[-2] < 30) if len(data) > 1 else False
