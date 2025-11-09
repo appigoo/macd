@@ -2,7 +2,6 @@ import streamlit as st
 import yfinance as yf
 import pandas as pd
 import numpy as np
-import time
 
 # 計算 MACD
 def calculate_macd(df, fast=12, slow=26, signal=9):
@@ -52,8 +51,9 @@ def detect_bullish_divergence(df, histogram):
         return False
     recent_lows = df['Low'].iloc[-3:]
     hist_lows = histogram.iloc[-3:]
-    lows_decreasing = (recent_lows.diff() <= 0).all()
-    hist_decreasing = (hist_lows.diff() <= 0).all()
+    # 修復：dropna() 以忽略 diff() 的第一個 NaN 值，避免 NaN 轉換為 False 導致 .all() 永遠為 False
+    lows_decreasing = (recent_lows.diff().dropna() <= 0).all()
+    hist_decreasing = (hist_lows.diff().dropna() <= 0).all()
     # 多頭分歧判斷是價格創新低，但指標沒有創新低
     if lows_decreasing and not hist_decreasing:
         return True
@@ -80,7 +80,7 @@ with st.sidebar:
     ticker = st.text_input('股票代碼', value='TSLA')
     period = st.selectbox('數據天數', ['1d', '5d', '10d'], index=1)
     interval = st.selectbox('K線間隔', ['1m', '5m', '15m'], index=1)
-    refresh_minutes = st.number_input('自動刷新分鐘', value=5, min_value=1)
+    refresh_minutes = st.number_input('建議刷新間隔（分鐘）', value=5, min_value=1)
 
     st.subheader('指標設置')
     macd_fast = st.number_input('MACD Fast Period', value=12, min_value=1)
@@ -171,12 +171,12 @@ def refresh_data():
         with col2:
             st.line_chart(data['Histogram'].tail(50))
 
-# 手動刷新按鈕（Streamlit 會在側邊欄變更或按鈕點擊時自動重新運行腳本）
-if st.button('手動刷新數據'):
-    st.rerun()  # 強制重新運行腳本以更新數據（需 Streamlit 1.28+）
-
-# 初始載入時執行刷新
+# 初始載入數據
 refresh_data()
 
-# 注意：自動刷新在 Streamlit 中不易實現非阻塞計時器。若需真自動刷新，建議使用外部調度器或 JavaScript 組件。
-st.info('提示：更改側邊欄參數或點擊刷新按鈕以更新數據。')
+# 手動刷新按鈕（側邊欄參數變化時自動 reruns）
+st.sidebar.markdown("---")
+if st.sidebar.button('立即刷新數據'):
+    st.rerun()
+
+st.sidebar.info(f'建議每 {refresh_minutes} 分鐘手動刷新一次，以獲取最新數據。')
