@@ -78,7 +78,7 @@ st.write('基於 MACD、Histogram 變化、多頭分歧、RSI、Stochastic、OBV
 with st.sidebar:
     st.subheader('自訂參數')
     ticker = st.text_input('股票代碼', value='TSLA')
-    period = st.selectbox('數據天數', ['1d', '5d', '10d'], index=0)
+    period = st.selectbox('數據天數', ['1d', '5d', '10d'], index=1)
     interval = st.selectbox('K線間隔', ['1m', '5m', '15m'], index=1)
     refresh_minutes = st.number_input('自動刷新分鐘', value=5, min_value=1)
 
@@ -96,13 +96,15 @@ placeholder = st.empty()
 def refresh_data():
     data = get_data(ticker, period, interval)
     if data.empty:
-        st.error('無法獲取數據，請檢查股票代碼或市場是否開盤（周末無 intraday 數據）')
+        with placeholder:
+            st.error('無法獲取數據，請檢查股票代碼或市場是否開盤（周末無 intraday 數據）')
         return
 
     required_cols = ['Close', 'High', 'Low', 'Volume']
     missing_cols = [col for col in required_cols if col not in data.columns]
     if missing_cols:
-        st.error(f"數據缺少必要欄位: {missing_cols}，請檢查ticker或interval。")
+        with placeholder:
+            st.error(f"數據缺少必要欄位: {missing_cols}，請檢查ticker或interval。")
         return
 
     data = data.tail(500)  # 限制數據長度
@@ -121,7 +123,8 @@ def refresh_data():
     data = data.dropna()
 
     if len(data) < 10:
-        st.warning('數據不足（<10 根 K 線），無法計算完整指標。請調整 period 或 interval。')
+        with placeholder:
+            st.warning('數據不足（<10 根 K 線），無法計算完整指標。請調整 period 或 interval。')
         return
 
     latest_hist = data['Histogram'].tail(3)
@@ -144,7 +147,7 @@ def refresh_data():
     if score >= 5:
         suggestion = '強烈買入信號：多指標確認，預測 MACD 即將交叉轉正。考慮進場，設止損。'
 
-    with placeholder.container():
+    with placeholder:
         st.subheader('最新數據和指標')
         st.metric("最新收盤價", f"{data['Close'].iloc[-1]:.2f}")
         st.write(f'MACD Histogram: {data["Histogram"].iloc[-1]:.4f} (是否縮小: {"是" if hist_increasing else "否"})')
@@ -168,14 +171,12 @@ def refresh_data():
         with col2:
             st.line_chart(data['Histogram'].tail(50))
 
-# 使用 Streamlit 的自動刷新組件，每 refresh_minutes 分鐘刷新一次
-countdown = st.empty()
-refresh_interval = refresh_minutes * 60  # 秒
+# 手動刷新按鈕（Streamlit 會在側邊欄變更或按鈕點擊時自動重新運行腳本）
+if st.button('手動刷新數據'):
+    st.rerun()  # 強制重新運行腳本以更新數據（需 Streamlit 1.28+）
 
-last_run = time.time()
+# 初始載入時執行刷新
+refresh_data()
 
-while True:
-    refresh_data()
-    for i in range(refresh_interval, 0, -1):
-        countdown.text(f"距離下一次自動刷新還有 {i} 秒")
-        time.sleep(1)
+# 注意：自動刷新在 Streamlit 中不易實現非阻塞計時器。若需真自動刷新，建議使用外部調度器或 JavaScript 組件。
+st.info('提示：更改側邊欄參數或點擊刷新按鈕以更新數據。')
