@@ -306,7 +306,7 @@ def refresh_data():
         st.subheader('最近 10 根 K 線數據')
         st.dataframe(data.tail(10)[['Open', 'High', 'Low', 'Close', 'Volume']])
 
-        # 新增：成交量走勢圖
+        # 成交量走勢圖
         col1, col2, col3 = st.columns(3)
         with col1:
             st.subheader('價格走勢')
@@ -321,20 +321,28 @@ def refresh_data():
 # 初始載入數據
 refresh_data()
 
-# 自動刷新邏輯
+# 自動刷新邏輯（添加除錯輸出）
 if 'last_refresh_time' not in st.session_state:
     st.session_state.last_refresh_time = time.time()
+    print("Debug: Session state initialized with current time.")
 
+print(f"Debug: enable_auto_refresh={enable_auto_refresh}, interval={auto_interval_minutes}")
 if enable_auto_refresh and auto_interval_minutes > 0:
     interval_seconds = auto_interval_minutes * 60
-    if time.time() - st.session_state.last_refresh_time >= interval_seconds:
+    elapsed = time.time() - st.session_state.last_refresh_time
+    print(f"Debug: Elapsed {elapsed:.1f}s / Interval {interval_seconds}s")
+    if elapsed >= interval_seconds:
+        print("Debug: Rerun triggered!")
         st.session_state.last_refresh_time = time.time()
         st.rerun()
+else:
+    print("Debug: Auto refresh disabled.")
 
 # 手動刷新按鈕（側邊欄參數變化時自動 reruns）
 st.sidebar.markdown("---")
 if st.sidebar.button('立即刷新數據'):
     st.session_state.last_refresh_time = time.time()
+    print("Debug: Manual refresh triggered!")
     st.rerun()
 
 st.sidebar.info(f'建議每 {refresh_minutes} 分鐘手動刷新一次，以獲取最新數據。周末將自動切換至每日數據。')
