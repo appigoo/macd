@@ -63,7 +63,7 @@ def detect_bullish_divergence(df, histogram):
 # 獲取數據（使用 yfinance）
 def get_data(ticker, period, interval):
     try:
-        data = yf.download(ticker, period=period, interval=interval)
+        data = yf.download(ticker, period=period, interval=interval, auto_adjust=False)  # 明確 False 確保完整欄位
         if data.empty:
             return pd.DataFrame()
         # 移除 rename，保持大寫欄位
@@ -100,6 +100,15 @@ while True:
         data = get_data(ticker, period, interval)
         
         if not data.empty:
+            # 新增：檢查必要欄位
+            required_cols = ['Close', 'High', 'Low', 'Volume']
+            missing_cols = [col for col in required_cols if col not in data.columns]
+            if missing_cols:
+                st.error(f"數據缺少必要欄位: {missing_cols}。可用欄位: {data.columns.tolist()}。請檢查 ticker 或 interval（intraday 可能無數據）。")
+                time.sleep(refresh_minutes * 60)
+                st.rerun()
+                continue
+            
             # 限制數據長度以提升效能（最多 500 根 K 線）
             data = data.tail(500)
             
@@ -119,14 +128,12 @@ while True:
             data = data.dropna()
             
             if len(data) < 10:
-                st.warning('數據不足，無法計算完整指標。請調整 period 或 interval。')
+                st.warning('數據不足（<10 根 K 線），無法計算完整指標。請調整 period 或 interval（或等待市場開盤）。')
                 time.sleep(refresh_minutes * 60)
                 st.rerun()
                 continue
             
             # 分析信號
-            latest_hist = histogram.iloc[-3:]  # 最近 3 根 histogram（注意：histogram 是原長度，但我們用 data 的 index 對應
-            # 由於 dropna 後，histogram[-3:] 需調整為 data['Histogram'][-3:]
             latest_hist = data['Histogram'].tail(3)
             hist_increasing = (latest_hist.diff().dropna().gt(0).all()) and (latest_hist.iloc[-1] < 0)
             
@@ -183,7 +190,7 @@ while True:
                     st.line_chart(data['Histogram'].tail(50))
         
         else:
-            st.error('無法獲取數據，請檢查股票代碼或市場是否開盤。')
+            st.error('無法獲取數據，請檢查股票代碼或市場是否開盤（e.g., 周末無 intraday 數據）。')
         
     except Exception as e:
         st.error(f'運行錯誤: {e}')
