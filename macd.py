@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import requests  # 用於 Telegram API 請求
-import time  # 新增：用於自動刷新時間檢查
+import time  # 用於自動刷新時間檢查
 
 # 計算 MACD
 def calculate_macd(df, fast=12, slow=26, signal=9):
@@ -162,7 +162,7 @@ with st.sidebar:
     interval = st.selectbox('K線間隔', ['1m', '5m', '15m', '1d'], index=1)  # 添加 1d 選項
     refresh_minutes = st.number_input('建議刷新間隔（分鐘）', value=5, min_value=1)
 
-    # 新增：自動刷新選項
+    # 自動刷新選項
     enable_auto_refresh = st.checkbox('啟用自動刷新', value=False)
     if enable_auto_refresh:
         auto_interval_minutes = st.selectbox('自動刷新間隔 (分鐘)', [1, 2, 3, 4, 5], index=0)
@@ -306,16 +306,22 @@ def refresh_data():
         st.subheader('最近 10 根 K 線數據')
         st.dataframe(data.tail(10)[['Open', 'High', 'Low', 'Close', 'Volume']])
 
-        col1, col2 = st.columns(2)
+        # 新增：成交量走勢圖
+        col1, col2, col3 = st.columns(3)
         with col1:
+            st.subheader('價格走勢')
             st.line_chart(data['Close'].tail(50))
         with col2:
+            st.subheader('MACD Histogram')
             st.line_chart(data['Histogram'].tail(50))
+        with col3:
+            st.subheader('成交量')
+            st.bar_chart(data['Volume'].tail(50))
 
 # 初始載入數據
 refresh_data()
 
-# 新增：自動刷新邏輯
+# 自動刷新邏輯
 if 'last_refresh_time' not in st.session_state:
     st.session_state.last_refresh_time = time.time()
 
