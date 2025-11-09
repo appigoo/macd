@@ -4,6 +4,7 @@ import pandas as pd
 import numpy as np
 from datetime import datetime
 import requests  # 用於 Telegram API 請求
+import time  # 新增：用於自動刷新時間檢查
 
 # 計算 MACD
 def calculate_macd(df, fast=12, slow=26, signal=9):
@@ -88,7 +89,7 @@ def detect_bullish_divergence(df, histogram):
         return True
     return False
 
-# 新增：檢測熊頭分歧
+# 檢測熊頭分歧
 def detect_bearish_divergence(df, histogram):
     if len(df) < 3:
         return False
@@ -160,6 +161,13 @@ with st.sidebar:
     period = st.selectbox('數據天數', ['1d', '5d', '10d'], index=1)  # 默認 5d 以避免周末 1d 問題
     interval = st.selectbox('K線間隔', ['1m', '5m', '15m', '1d'], index=1)  # 添加 1d 選項
     refresh_minutes = st.number_input('建議刷新間隔（分鐘）', value=5, min_value=1)
+
+    # 新增：自動刷新選項
+    enable_auto_refresh = st.checkbox('啟用自動刷新', value=False)
+    if enable_auto_refresh:
+        auto_interval_minutes = st.selectbox('自動刷新間隔 (分鐘)', [1, 2, 3, 4, 5], index=0)
+    else:
+        auto_interval_minutes = 0
 
     st.subheader('指標設置')
     macd_fast = st.number_input('MACD Fast Period', value=12, min_value=1)
@@ -248,7 +256,7 @@ def refresh_data():
     buy_signals = [hist_increasing, divergence, rsi_signal, stoch_cross, volume_spike, obv_up, mfi_signal, bb_signal]
     buy_score = sum(buy_signals)
 
-    # 新增：賣出信號（對應相反邏輯）
+    # 賣出信號（對應相反邏輯）
     hist_decreasing = all(pd.to_numeric(d, errors='coerce') < 0 and pd.notna(pd.to_numeric(d, errors='coerce')) for d in diff_hist) and (latest_hist.iloc[-1] > 0)
     sell_signals = [hist_decreasing, bearish_divergence, rsi_sell_signal, stoch_sell_cross, volume_sell_spike, obv_down, mfi_sell_signal, bb_sell_signal]
     sell_score = sum(sell_signals)
@@ -269,7 +277,7 @@ def refresh_data():
         sell_suggestion = '潛在賣出機會：MACD Histogram 擴大，預測 MACD 可能即將從正轉負。建議關注。'
     if sell_score >= 5:
         sell_suggestion = '強烈賣出信號：多指標確認，預測 MACD 即將交叉轉負。考慮出場，設止盈。'
-        # 新增：賣出通知
+        # 賣出通知
         if enable_telegram_sell and telegram_ready:
             now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             message = f"<b>⚠️ 強烈賣出信號！</b>\n股票: {ticker}\n時間: {now}\n收盤價: {data['Close'].iloc[-1]:.2f}\n信號強度: {sell_score}/8\n建議: {sell_suggestion}"
@@ -307,9 +315,22 @@ def refresh_data():
 # 初始載入數據
 refresh_data()
 
+# 新增：自動刷新邏輯
+if 'last_refresh_time' not in st.session_state:
+    st.session_state.last_refresh_time = time.time()
+
+if enable_auto_refresh and auto_interval_minutes > 0:
+    interval_seconds = auto_interval_minutes * 60
+    if time.time() - st.session_state.last_refresh_time >= interval_seconds:
+        st.session_state.last_refresh_time = time.time()
+        st.rerun()
+
 # 手動刷新按鈕（側邊欄參數變化時自動 reruns）
 st.sidebar.markdown("---")
 if st.sidebar.button('立即刷新數據'):
+    st.session_state.last_refresh_time = time.time()
     st.rerun()
 
 st.sidebar.info(f'建議每 {refresh_minutes} 分鐘手動刷新一次，以獲取最新數據。周末將自動切換至每日數據。')
+if enable_auto_refresh:
+    st.sidebar.success(f'自動刷新已啟用，每 {auto_interval_minutes} 分鐘一次。')
