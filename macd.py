@@ -51,9 +51,10 @@ def detect_bullish_divergence(df, histogram):
         return False
     recent_lows = df['Low'].iloc[-3:]
     hist_lows = histogram.iloc[-3:]
-    # 修復：dropna() 以忽略 diff() 的第一個 NaN 值，避免 NaN 轉換為 False 導致 .all() 永遠為 False
-    lows_decreasing = (recent_lows.diff().dropna() <= 0).all()
-    hist_decreasing = (hist_lows.diff().dropna() <= 0).all()
+    diff_lows = recent_lows.diff().dropna()
+    diff_hists = hist_lows.diff().dropna()
+    lows_decreasing = all(d <= 0 for d in diff_lows)
+    hist_decreasing = all(d <= 0 for d in diff_hists)
     # 多頭分歧判斷是價格創新低，但指標沒有創新低
     if lows_decreasing and not hist_decreasing:
         return True
@@ -128,7 +129,8 @@ def refresh_data():
         return
 
     latest_hist = data['Histogram'].tail(3)
-    hist_increasing = (latest_hist.diff().dropna().gt(0).all()) and (latest_hist.iloc[-1] < 0)
+    diff_hist = latest_hist.diff().dropna()
+    hist_increasing = all(d > 0 for d in diff_hist) and (latest_hist.iloc[-1] < 0)
     divergence = detect_bullish_divergence(data, data['Histogram'])
     rsi_latest = data['RSI'].iloc[-1]
     rsi_signal = (rsi_latest > 40) and (data['RSI'].iloc[-2] < 30) if len(data) > 1 else False
